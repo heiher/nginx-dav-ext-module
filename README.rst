@@ -2,7 +2,7 @@
 nginx-dav-ext-module
 ********************
 
-nginx_ WebDAV_ PROPFIND,OPTIONS,LOCK,UNLOCK support.
+nginx_ WebDAV_ PROPFIND,PROPPATCH,OPTIONS,LOCK,UNLOCK support.
 
 .. contents::
 
@@ -79,7 +79,7 @@ dav_ext_methods
 ---------------
 
 ========== ====
-*Syntax:*  ``dav_ext_methods [PROPFIND] [OPTIONS] [LOCK] [UNLOCK]``
+*Syntax:*  ``dav_ext_methods [PROPFIND] [PROPPATCH] [OPTIONS] [LOCK] [UNLOCK]``
 *Context:* http, server, location
 ========== ====
 
@@ -124,7 +124,7 @@ Simple lockless example::
         root /data/www;
 
         dav_methods PUT DELETE MKCOL COPY MOVE;
-        dav_ext_methods PROPFIND OPTIONS;
+        dav_ext_methods PROPFIND PROPPATCH OPTIONS;
     }
 
 
@@ -145,7 +145,7 @@ WebDAV with locking::
                 root /data/www;
 
                 dav_methods PUT DELETE MKCOL COPY MOVE;
-                dav_ext_methods PROPFIND OPTIONS LOCK UNLOCK;
+                dav_ext_methods PROPFIND PROPPATCH OPTIONS LOCK UNLOCK;
                 dav_ext_lock zone=foo;
             }
         }
@@ -175,7 +175,7 @@ WebDAV with locking which works with MacOS client::
                 }
 
                 dav_methods PUT DELETE MKCOL COPY MOVE;
-                dav_ext_methods PROPFIND OPTIONS LOCK UNLOCK;
+                dav_ext_methods PROPFIND PROPPATCH OPTIONS LOCK UNLOCK;
                 dav_ext_lock zone=foo;
             }
         }

@@ -103,6 +103,7 @@ static ngx_int_t ngx_http_dav_ext_set_locks(ngx_http_request_t *r,
     ngx_http_dav_ext_entry_t *entry);
 static ngx_int_t ngx_http_dav_ext_propfind_response(ngx_http_request_t *r,
     ngx_array_t *entries, ngx_uint_t props);
+static void ngx_http_dav_ext_proppatch_handler(ngx_http_request_t *r);
 static ngx_int_t ngx_http_dav_ext_lock_handler(ngx_http_request_t *r);
 static ngx_int_t ngx_http_dav_ext_lock_response(ngx_http_request_t *r,
     ngx_uint_t status, time_t timeout, ngx_uint_t depth, uint32_t token);
@@ -132,12 +133,13 @@ static ngx_int_t ngx_http_dav_ext_init(ngx_conf_t *cf);
 
 
 static ngx_conf_bitmask_t  ngx_http_dav_ext_methods_mask[] = {
-    { ngx_string("off"),      NGX_HTTP_DAV_EXT_OFF },
-    { ngx_string("propfind"), NGX_HTTP_PROPFIND    },
-    { ngx_string("options"),  NGX_HTTP_OPTIONS     },
-    { ngx_string("lock"),     NGX_HTTP_LOCK        },
-    { ngx_string("unlock"),   NGX_HTTP_UNLOCK      },
-    { ngx_null_string,        0                    }
+    { ngx_string("off"),       NGX_HTTP_DAV_EXT_OFF },
+    { ngx_string("propfind"),  NGX_HTTP_PROPFIND    },
+    { ngx_string("proppatch"), NGX_HTTP_PROPPATCH   },
+    { ngx_string("options"),   NGX_HTTP_OPTIONS     },
+    { ngx_string("lock"),      NGX_HTTP_LOCK        },
+    { ngx_string("unlock"),    NGX_HTTP_UNLOCK      },
+    { ngx_null_string,         0                    }
 };
 
 
@@ -479,6 +481,19 @@ ngx_http_dav_ext_content_handler(ngx_http_request_t *r)
 
         rc = ngx_http_read_client_request_body(r,
                                             ngx_http_dav_ext_propfind_handler);
+        if (rc >= NGX_HTTP_SPECIAL_RESPONSE) {
+            return rc;
+        }
+
+        return NGX_DONE;
+
+    case NGX_HTTP_PROPPATCH:
+
+        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                       "http dav_ext proppatch");
+
+        rc = ngx_http_read_client_request_body(r,
+                                            ngx_http_dav_ext_proppatch_handler);
         if (rc >= NGX_HTTP_SPECIAL_RESPONSE) {
             return rc;
         }
@@ -1090,6 +1105,70 @@ ngx_http_dav_ext_propfind_response(ngx_http_request_t *r, ngx_array_t *entries,
     }
 
     return ngx_http_output_filter(r, &cl);
+}
+
+
+static void
+ngx_http_dav_ext_proppatch_handler(ngx_http_request_t *r)
+{
+    size_t                     len;
+    ngx_buf_t                 *b;
+    ngx_int_t                  rc;
+    ngx_chain_t                cl;
+
+    static u_char head[] =
+        "<?xml version=\"1.0\" encoding=\"utf-8\" ?>\n"
+        "<D:multistatus xmlns:D=\"DAV:\">\n";
+
+    static u_char body[] =
+        "<D:response>\n"
+        "<D:propstat>\n"
+        "<D:status>HTTP/1.1 200 OK</D:status>\n"
+        "</D:propstat>\n"
+        "</D:response>\n";
+
+    static u_char tail[] =
+        "</D:multistatus>\n";
+
+    len = sizeof(head) - 1 + sizeof(body) - 1 + sizeof(tail) - 1;
+
+    b = ngx_create_temp_buf(r->pool, len);
+    if (b == NULL) {
+        rc = NGX_HTTP_INTERNAL_SERVER_ERROR;
+        goto exit;
+    }
+
+    b->last = ngx_cpymem(b->last, head, sizeof(head) - 1);
+    b->last = ngx_cpymem(b->last, body, sizeof(body) - 1);
+    b->last = ngx_cpymem(b->last, tail, sizeof(tail) - 1);
+
+    b->last_buf = (r == r->main) ? 1 : 0;
+    b->last_in_chain = 1;
+
+    cl.buf = b;
+    cl.next = NULL;
+
+    r->headers_out.status = 207;
+    ngx_str_set(&r->headers_out.status_line, "207 Multi-Status");
+
+    r->headers_out.content_length_n = b->last - b->pos;
+
+    r->headers_out.content_type_len = sizeof("text/xml") - 1;
+    ngx_str_set(&r->headers_out.content_type, "text/xml");
+    r->headers_out.content_type_lowcase = NULL;
+
+    ngx_str_set(&r->headers_out.charset, "utf-8");
+
+    rc = ngx_http_send_header(r);
+
+    if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
+        goto exit;
+    }
+
+    rc = ngx_http_output_filter(r, &cl);
+
+exit:
+    ngx_http_finalize_request(r, rc);
 }
 
 
